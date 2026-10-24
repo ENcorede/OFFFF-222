@@ -99,6 +99,112 @@ def currency_name(symbol: str) -> str:
 
 
 # =========================================================
+# ЯЗЫКИ ОФФЕРА
+# =========================================================
+
+LANGUAGES = {
+    "ru": "Русский",
+    "en": "English",
+    "zh": "中文",
+}
+
+OFFER_TEXTS = {
+    "ru": {
+        "share": (
+            "Пользователь @{creator} предлагает:\n"
+            "Сумма: {amount} {currency}\n"
+            "Подарок: {link}\n\n"
+            "Вы можете отменить или принять оффер."
+        ),
+        "recipient": (
+            "Пользователь @{creator} предлагает:\n"
+            "Сумма: {amount} {currency}\n"
+            "Подарок: {link}\n\n"
+            "Выберите действие."
+        ),
+        "reject_btn": "Отклонить",
+        "accept_btn": "Принять",
+        "deal": (
+            "Сделка по NFT\n"
+            "Заказ #{deal_id}\n\n"
+            "Сумма предложения: {amount} {currency}.\n\n"
+            "Перед передачей подарка проверьте условия сделки и получение "
+            "оплаты. Это сообщение подтверждает резервирование средств "
+            "и наличие оплаты.\n\n"
+            "Для передачи подарка:\n"
+            "1. Нажмите Transfer NFT и откройте раздел Telegram NFT.\n"
+            "2. Найдите подарок: {link}\n"
+            "3. Выберите покупателя и подтвердите передачу в Telegram.\n\n"
+            "Предложение действует 24 часа. Бот выполняет автоматическое "
+            "эскроу-зачисление и проверяет передачу NFT."
+        ),
+    },
+    "en": {
+        "share": (
+            "User @{creator} offers:\n"
+            "Amount: {amount} {currency}\n"
+            "Gift: {link}\n\n"
+            "You can cancel or accept the offer."
+        ),
+        "recipient": (
+            "User @{creator} offers:\n"
+            "Amount: {amount} {currency}\n"
+            "Gift: {link}\n\n"
+            "Choose an action."
+        ),
+        "reject_btn": "Reject",
+        "accept_btn": "Accept",
+        "deal": (
+            "NFT Deal\n"
+            "Order #{deal_id}\n\n"
+            "Offer amount: {amount} {currency}.\n\n"
+            "Before transferring the gift, verify the deal terms and payment "
+            "receipt. This message confirms the reservation of funds and "
+            "payment availability.\n\n"
+            "To transfer the gift:\n"
+            "1. Press Transfer NFT and open the Telegram NFT section.\n"
+            "2. Find the gift: {link}\n"
+            "3. Select the buyer and confirm the transfer in Telegram.\n\n"
+            "The offer is valid for 24 hours. The bot performs automatic "
+            "escrow crediting and verifies the NFT transfer."
+        ),
+    },
+    "zh": {
+        "share": (
+            "用户 @{creator} 提供：\n"
+            "金额：{amount} {currency}\n"
+            "礼物：{link}\n\n"
+            "您可以取消或接受此报价。"
+        ),
+        "recipient": (
+            "用户 @{creator} 提供：\n"
+            "金额：{amount} {currency}\n"
+            "礼物：{link}\n\n"
+            "请选择操作。"
+        ),
+        "reject_btn": "拒绝",
+        "accept_btn": "接受",
+        "deal": (
+            "NFT 交易\n"
+            "订单 #{deal_id}\n\n"
+            "报价金额：{amount} {currency}。\n\n"
+            "在转移礼物之前，请检查交易条款和付款收据。此消息确认资金已预留"
+            "且付款已到账。\n\n"
+            "转移礼物：\n"
+            "1. 点击 Transfer NFT 并打开 Telegram NFT 部分。\n"
+            "2. 找到礼物：{link}\n"
+            "3. 选择买家并在 Telegram 中确认转账。\n\n"
+            "报价有效期为 24 小时。机器人执行自动托管记账并验证 NFT 转移。"
+        ),
+    },
+}
+
+
+def offer_texts(lang):
+    return OFFER_TEXTS.get(lang, OFFER_TEXTS["ru"])
+
+
+# =========================================================
 # ТЕКСТЫ
 # =========================================================
 
@@ -108,6 +214,8 @@ WELCOME = (
     "и отслеживайте сделки.\n\n"
     "После сделки свяжитесь с администратором по вопросам выплаты."
 )
+
+T_LANGUAGE = "❓ Выберите язык оффера."
 
 T_USERNAME = (
     "🐶 Пришлите @username человека, которому хотите сделать оффер.\n\n"
@@ -158,6 +266,7 @@ pending_offers = {}
 # =========================================================
 
 class OfferFlow(StatesGroup):
+    language = State()
     username = State()
     link = State()
     currency = State()
@@ -203,6 +312,23 @@ def back_kb(target):
                 icon_custom_emoji_id=EMOJI_MAP["⬅️"]
             )
         ]
+    ])
+
+
+def language_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Русский", callback_data="lang:ru"),
+            InlineKeyboardButton(text="English", callback_data="lang:en"),
+            InlineKeyboardButton(text="中文", callback_data="lang:zh"),
+        ],
+        [
+            InlineKeyboardButton(
+                text="Назад",
+                callback_data="back:main",
+                icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            )
+        ],
     ])
 
 
@@ -261,17 +387,17 @@ def confirm_kb():
     ])
 
 
-def recipient_kb(oid):
-    # У получателя только две кнопки.
+def recipient_kb(oid, lang="ru"):
+    texts = offer_texts(lang)
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
-                text="Отклонить",
+                text=texts["reject_btn"],
                 callback_data=f"reject:{oid}",
                 icon_custom_emoji_id=EMOJI_MAP["✖️"]
             ),
             InlineKeyboardButton(
-                text="Принять",
+                text=texts["accept_btn"],
                 callback_data=f"accept:{oid}",
                 icon_custom_emoji_id=EMOJI_MAP["✅"]
             ),
@@ -280,7 +406,6 @@ def recipient_kb(oid):
 
 
 def share_kb(oid):
-    # Поделиться может создатель оффера.
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(
@@ -320,30 +445,24 @@ def make_share_text(oid):
     if not offer:
         return None
 
-    return (
-        f"Пользователь @{esc(offer['creator_username'])} предлагает:\n"
-        f"Сумма: {offer['amount']} "
-        f"{esc(currency_name(offer['currency']))}\n"
-        f"Подарок: {esc(offer['link'])}\n\n"
-        "Вы можете отменить или принять оффер."
+    texts = offer_texts(offer.get("language", "ru"))
+
+    return texts["share"].format(
+        creator=esc(offer["creator_username"]),
+        amount=offer["amount"],
+        currency=esc(currency_name(offer["currency"])),
+        link=esc(offer["link"]),
     )
 
 
 def make_deal_text(offer):
-    return (
-        "Сделка по NFT\n"
-        f"Заказ #{esc(offer['deal_id'])}\n\n"
-        f"Сумма предложения: {offer['amount']} "
-        f"{esc(currency_name(offer['currency']))}.\n\n"
-        "Перед передачей подарка проверьте условия сделки и получение "
-        "оплаты. Это сообщение подтверждает резервирование средств "
-        "и наличие оплаты.\n\n"
-        "Для передачи подарка:\n"
-        "1. Нажмите Transfer NFT и откройте раздел Telegram NFT.\n"
-        f"2. Найдите подарок: {esc(offer['link'])}\n"
-        "3. Выберите покупателя и подтвердите передачу в Telegram.\n\n"
-        "Предложение действует 24 часа. Бот выполняет автоматическое "
-        "эскроу-зачисление и проверяет передачу NFT."
+    texts = offer_texts(offer.get("language", "ru"))
+
+    return texts["deal"].format(
+        deal_id=esc(offer["deal_id"]),
+        amount=offer["amount"],
+        currency=esc(currency_name(offer["currency"])),
+        link=esc(offer["link"]),
     )
 
 
@@ -418,18 +537,20 @@ async def send_offer_to_recipient(recipient_id, oid):
     if not offer:
         return
 
-    text = (
-        f"Пользователь @{esc(offer['creator_username'])} предлагает:\n"
-        f"Сумма: {offer['amount']} "
-        f"{esc(currency_name(offer['currency']))}\n"
-        f"Подарок: {esc(offer['link'])}\n\n"
-        "Выберите действие."
+    lang = offer.get("language", "ru")
+    texts = offer_texts(lang)
+
+    text = texts["recipient"].format(
+        creator=esc(offer["creator_username"]),
+        amount=offer["amount"],
+        currency=esc(currency_name(offer["currency"])),
+        link=esc(offer["link"]),
     )
 
     await bot.send_message(
         recipient_id,
         text,
-        reply_markup=recipient_kb(oid)
+        reply_markup=recipient_kb(oid, lang)
     )
 
 
@@ -532,12 +653,32 @@ async def cb_create_offer(cb: CallbackQuery, state: FSMContext):
             )
             return
 
+    await state.set_state(OfferFlow.language)
+
+    await safe_edit_message(
+        cb,
+        e(T_LANGUAGE),
+        language_kb()
+    )
+
+    await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("lang:"))
+async def cb_language(cb: CallbackQuery, state: FSMContext):
+    lang = cb.data.split(":", 1)[1]
+
+    if lang not in LANGUAGES:
+        await cb.answer("Неизвестный язык.", show_alert=True)
+        return
+
+    await state.update_data(language=lang)
     await state.set_state(OfferFlow.username)
 
     await safe_edit_message(
         cb,
         e(T_USERNAME),
-        back_kb("main")
+        back_kb("language")
     )
 
     await cb.answer()
@@ -573,13 +714,22 @@ async def cb_back(cb: CallbackQuery, state: FSMContext):
             main_menu_kb()
         )
 
+    elif target == "language":
+        await state.set_state(OfferFlow.language)
+
+        await safe_edit_message(
+            cb,
+            e(T_LANGUAGE),
+            language_kb()
+        )
+
     elif target == "username":
         await state.set_state(OfferFlow.username)
 
         await safe_edit_message(
             cb,
             e(T_USERNAME),
-            back_kb("main")
+            back_kb("language")
         )
 
     elif target == "link":
@@ -715,6 +865,7 @@ async def msg_amount(message: Message, state: FSMContext):
 
     preview = (
         f"{T_CONFIRM}\n\n"
+        f"Язык: {esc(LANGUAGES.get(data.get('language', 'ru'), 'Русский'))}\n"
         f"Получатель: {esc(data['recipient'])}\n"
         f"Подарок: {esc(data['link'])}\n"
         f"Сумма: {amount} {esc(currency_name(data['currency']))}"
@@ -754,6 +905,7 @@ async def cb_confirm(cb: CallbackQuery, state: FSMContext):
         "link": data["link"],
         "currency": data["currency"],
         "amount": data["amount"],
+        "language": data.get("language", "ru"),
         "status": "pending",
         "accepted_by": None,
         "created_at": time.time(),
@@ -776,6 +928,7 @@ async def cb_confirm(cb: CallbackQuery, state: FSMContext):
 
     notify = (
         "Оффер создан.\n\n"
+        f"Язык: {esc(LANGUAGES.get(offer['language'], 'Русский'))}\n"
         f"Получатель: {esc(data['recipient'])}\n"
         f"Сумма: {data['amount']} "
         f"{esc(currency_name(data['currency']))}\n"
@@ -816,6 +969,7 @@ async def inline_offer(query: InlineQuery):
         return
 
     text = make_share_text(oid)
+    lang = offer.get("language", "ru")
 
     result = InlineQueryResultArticle(
         id=oid,
@@ -825,7 +979,7 @@ async def inline_offer(query: InlineQuery):
             message_text=text,
             parse_mode=ParseMode.HTML
         ),
-        reply_markup=recipient_kb(oid)
+        reply_markup=recipient_kb(oid, lang)
     )
 
     await query.answer(
